@@ -1,0 +1,56 @@
+syntax = "proto3";  // https://developers.google.com/protocol-buffers/docs/proto3
+
+option java_multiple_files = true;  // Causes top-level messages, enums, and services to be defined at the package level.
+option java_package = "cz.ctu.fee.dsv";     // The package you want to use for your generated Java classes.
+option java_outer_classname = "CommandsProto";   // The class name for the outermost Java class (and hence the file name) you want to generate.
+option objc_class_prefix = "DC";    // Sets the Objective-C class prefix.
+
+package dsvcmds;
+import "google/protobuf/empty.proto";
+
+service Commands {
+  rpc chngNNext (AddressProto) returns (google.protobuf.Empty) {}
+  rpc chngNext (AddressProto) returns (google.protobuf.Empty) {}
+  rpc chngPrev (AddressProto) returns (AddressProto) {}
+  rpc nodeMissing (AddressProto) returns (google.protobuf.Empty) {}
+  rpc hello (google.protobuf.Empty) returns (google.protobuf.Empty){}
+  rpc join (AddressProto) returns(DSNeighboursProto){}
+  rpc chngNNextOfPrev(AddressProto) returns(google.protobuf.Empty) {}
+}
+
+message AddressProto {
+  string hostname = 1;
+  int32 port = 2;
+}
+
+message DSNeighboursProto {
+  AddressProto next = 1;
+  AddressProto nnext = 2;
+  AddressProto prev = 3;
+  AddressProto leader = 4;
+}
+//
+//// service definition.
+//service Calculator {
+//  rpc Compute (ArOperation) returns (ArResult) {}
+//  rpc ContinuousSumCompute (stream ArOperation) returns (stream SumArResult) {}
+//}
+//
+//message ArOperation {
+//  enum Operation {
+//    PLUS = 0;
+//    MINUS = 1;
+//  }
+//  Operation operation = 1;
+//  float a = 2;
+//  float b = 3;
+//}
+//
+//message ArResult {
+//  double result = 1;
+//}
+//
+//message SumArResult {
+//  int32 num = 1;
+//  ArResult arResult = 2;
+//}
