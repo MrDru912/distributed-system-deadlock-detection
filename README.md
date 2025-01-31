@@ -1,3 +1,5 @@
+GitHub repository link: https://github.com/MrDru912/distributed-system-deadlock-detection/tree/main
+
 # Description
 Distributed system enabling basic management of nodes and exchange of resources with deadlock prevention using Local Lomet Algorithm.
 
