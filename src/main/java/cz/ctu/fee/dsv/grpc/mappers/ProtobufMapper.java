@@ -2,8 +2,11 @@ package cz.ctu.fee.dsv.grpc.mappers;
 
 import cz.ctu.fee.dsv.AddressProto;
 import cz.ctu.fee.dsv.DSNeighboursProto;
+import cz.ctu.fee.dsv.ResourceIdProto;
+import cz.ctu.fee.dsv.ResourceProto;
 import cz.ctu.fee.dsv.grpc.base.Address;
 import cz.ctu.fee.dsv.grpc.base.DSNeighbours;
+import cz.ctu.fee.dsv.grpc.resources.Resource;
 
 public class ProtobufMapper {
 
@@ -39,4 +42,16 @@ public class ProtobufMapper {
                 );
     }
 
+    public static ResourceIdProto stringIdToProto(String id){
+        return ResourceIdProto.newBuilder()
+                .setResourceId(id)
+                .build();
+    }
+
+    public static ResourceProto resourceToProto(Resource resource) {
+        return ResourceProto.newBuilder()
+                .setData(resource.getData())
+                .setId(resource.getId())
+                .build();
+    }
 }

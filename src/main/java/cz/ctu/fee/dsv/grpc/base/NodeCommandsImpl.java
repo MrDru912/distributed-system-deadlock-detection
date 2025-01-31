@@ -1,11 +1,14 @@
 package cz.ctu.fee.dsv.grpc.base;
 
-import cz.ctu.fee.dsv.AddressProto;
-import cz.ctu.fee.dsv.DSNeighboursProto;
+import cz.ctu.fee.dsv.*;
 import cz.ctu.fee.dsv.grpc.Node;
 import cz.ctu.fee.dsv.grpc.mappers.ProtobufMapper;
+import cz.ctu.fee.dsv.grpc.resources.Resource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class NodeCommandsImpl implements NodeCommands{
+    final Logger logger = LoggerFactory.getLogger(NodeCommandsImpl.class);
     private Node myNode = null;
 
 
@@ -16,12 +19,12 @@ public class NodeCommandsImpl implements NodeCommands{
     @Override
     public DSNeighboursProto join(AddressProto protoAddr) {
         Address addr = ProtobufMapper.fromProtoToAddress(protoAddr);
-        System.out.println("JOIN was called ...");
+        logger.info("JOIN was called ...");
         if (addr.compareTo(myNode.getAddress()) == 0) {
-            System.out.println("I am the first and leader");
+            logger.info("I am the first and leader");
             return ProtobufMapper.DSNeighboursToProto(myNode.getNeighbours());
         } else {
-            System.out.println("Someone is joining ...");
+            logger.info("Someone is joining ...");
             DSNeighbours myNeighbours = myNode.getNeighbours();
             Address myInitialNext = new Address(myNeighbours.next);     // because of 2 nodes config
             Address myInitialPrev = new Address(myNeighbours.prev);     // because of 2 nodes config
@@ -44,13 +47,13 @@ public class NodeCommandsImpl implements NodeCommands{
 
     @Override
     public void chngNNext(AddressProto addrProto) {
-        System.out.println("ChngNNext was called ...");
+        logger.info("ChngNNext was called ...");
         myNode.getNeighbours().nnext = ProtobufMapper.fromProtoToAddress(addrProto);
     }
 
     @Override
     public void chngNext(AddressProto addrProto) {
-        System.out.println("chngNext was called ...");
+        logger.info("chngNext was called ...");
         myNode.getNeighbours().next = ProtobufMapper.fromProtoToAddress(addrProto);
     }
 
@@ -58,21 +61,21 @@ public class NodeCommandsImpl implements NodeCommands{
 
     @Override
     public AddressProto chngPrev(AddressProto addrProto) {
-        System.out.println("ChngPrev was called ...");
+        logger.info("ChngPrev was called ...");
         myNode.getNeighbours().prev = ProtobufMapper.fromProtoToAddress(addrProto);
         return ProtobufMapper.AddressToProto(myNode.getNeighbours().next);
     }
 
     @Override
     public void chngNNextOfPrev(AddressProto addrProto) {
-        System.out.println("chngNNextOfPrev was called ...");
+        logger.info("chngNNextOfPrev was called ...");
         myNode.getCommHub().getPrev().chngNNext(addrProto);
     }
 
     @Override
     public void nodeMissing(AddressProto addrProto) {
         Address addr = ProtobufMapper.fromProtoToAddress(addrProto);
-        System.out.println("NodeMissing was called with " + addr);
+        logger.info("NodeMissing was called with {}", addr);
         if (addr.compareTo(myNode.getNeighbours().next) == 0) {
             // its for me
             DSNeighbours myNeighbours = myNode.getNeighbours();
@@ -83,7 +86,7 @@ public class NodeCommandsImpl implements NodeCommands{
             );
             // to my prev send msg ChNNext to my.next
             myNode.getCommHub().getPrev().chngNNext(ProtobufMapper.AddressToProto(myNeighbours.next));
-            System.out.println("NodeMissing DONE");
+            logger.info("NodeMissing DONE");
         } else {
             // send to next node
             myNode.getCommHub().getNext().nodeMissing(addrProto);
@@ -92,7 +95,7 @@ public class NodeCommandsImpl implements NodeCommands{
 
     public void nodeLeft(AddressProto addrProto) {
         Address addr = ProtobufMapper.fromProtoToAddress(addrProto);
-        System.out.println("NodeLeft was called with " + addr);
+        logger.info("NodeLeft was called with " + addr);
         DSNeighbours myNeighbours = myNode.getNeighbours();
         /* 2 nodes cycle */
         if (myNode.getNeighbours().prev.compareTo(myNode.getNeighbours().next) == 0) {
@@ -116,7 +119,7 @@ public class NodeCommandsImpl implements NodeCommands{
 
             myNode.getCommHub().getPrev().chngNNextOfPrev(ProtobufMapper.AddressToProto(myNeighbours.next));
         }
-        System.out.println("NodeMissing DONE");
+        logger.info("NodeMissing DONE");
     }
 
 
@@ -132,11 +135,54 @@ public class NodeCommandsImpl implements NodeCommands{
 
     @Override
     public void hello() {
-        System.out.println("Hello method called!");
+        logger.info("Hello method called!");
 
         // Send an empty response
 //        responseObserver.onNext(Empty.getDefaultInstance());
 //        // Signal that the call is complete
 //        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void preliminaryRequest(RequestResourceMessageProto preliminaryRequestMessageProto) {
+        logger.info("Preliminary request. {} {}.", myNode.getMyIP(), myNode.getMyPort());
+        if (preliminaryRequestMessageProto.getResourceId().equals(this.myNode.getResource().getId())) {
+            myNode.processPreliminaryRequest(preliminaryRequestMessageProto);
+        } else {
+            this.myNode.getCommHub().getNext().preliminaryRequest(preliminaryRequestMessageProto);
+        }
+    }
+
+    @Override
+    public void requestResource(RequestResourceMessageProto requestResourceMessageProto) {
+        logger.info("Request resource. Current node: ip {}; port {} resourceId {}. requested resource id: {}",
+                myNode.getMyIP(), myNode.getResource().getId(), myNode.getMyPort(), requestResourceMessageProto.getResourceId());
+        if (requestResourceMessageProto.getResourceId().equals(this.myNode.getResource().getId())){
+            myNode.requestResource(requestResourceMessageProto);
+        } else {
+            this.myNode.getCommHub().getNext().requestResource(requestResourceMessageProto);
+        }
+    }
+
+    @Override
+    public void acquireResource(AcquireMessageProto acquireMessageProto) {
+        logger.info("Acquire resource. Current node: ip {}; port {}; resourceId {}. Granted to: {}",
+                myNode.getMyIP(), myNode.getMyPort(), myNode.getResource().getId(), ProtobufMapper.fromProtoToAddress(acquireMessageProto.getRequesterAddress()));
+        if (this.myNode.getAddress().hostname.equals(acquireMessageProto.getRequesterAddress().getHostname())
+        && this.myNode.getAddress().port == acquireMessageProto.getRequesterAddress().getPort()) {
+            this.myNode.acquireResource(acquireMessageProto);
+        } else {
+            this.myNode.getCommHub().getNext().acquireResource(acquireMessageProto);
+        }
+    }
+
+    @Override
+    public void resourceWasReleased(ResourceProto resourceProto) {
+        if (this.myNode.getResource().getId().equals(resourceProto.getId())){
+            this.myNode.processReleaseResource(resourceProto);
+        } else {
+            logger.info("Resource was released request on {}. Redirecting to the next node", myNode.getAddress());
+            this.myNode.getCommHub().getNext().resourceWasReleased(resourceProto);
+        }
     }
 }

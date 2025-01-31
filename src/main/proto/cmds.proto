@@ -16,6 +16,10 @@ service Commands {
   rpc hello (google.protobuf.Empty) returns (google.protobuf.Empty){}
   rpc join (AddressProto) returns(DSNeighboursProto){}
   rpc chngNNextOfPrev(AddressProto) returns(google.protobuf.Empty) {}
+  rpc preliminaryRequest(RequestResourceMessageProto) returns(google.protobuf.Empty) {}
+  rpc requestResource(RequestResourceMessageProto) returns(google.protobuf.Empty) {}
+  rpc acquireResource(AcquireMessageProto) returns(google.protobuf.Empty) {}
+  rpc resourceWasReleased(ResourceProto) returns(google.protobuf.Empty) {}
 }
 
 message AddressProto {
@@ -29,28 +33,28 @@ message DSNeighboursProto {
   AddressProto prev = 3;
   AddressProto leader = 4;
 }
-//
-//// service definition.
-//service Calculator {
-//  rpc Compute (ArOperation) returns (ArResult) {}
-//  rpc ContinuousSumCompute (stream ArOperation) returns (stream SumArResult) {}
+
+message ResourceIdProto {
+  string resourceId = 1;
+}
+
+//message PreliminaryRequestMessageProto {
+//  string resourceId = 1;
+//  AddressProto returnAddress = 2;
 //}
-//
-//message ArOperation {
-//  enum Operation {
-//    PLUS = 0;
-//    MINUS = 1;
-//  }
-//  Operation operation = 1;
-//  float a = 2;
-//  float b = 3;
-//}
-//
-//message ArResult {
-//  double result = 1;
-//}
-//
-//message SumArResult {
-//  int32 num = 1;
-//  ArResult arResult = 2;
-//}
+
+
+message ResourceProto {
+  string id = 1;
+  string data = 2;
+}
+
+message RequestResourceMessageProto {
+  string resourceId = 1;
+  AddressProto requesterAddress = 2;
+}
+
+message AcquireMessageProto {
+  optional ResourceProto resource = 1;
+  AddressProto requesterAddress = 2;
+}

@@ -1,11 +1,10 @@
 package cz.ctu.fee.dsv.grpc;
 
 import com.google.protobuf.Empty;
-import cz.ctu.fee.dsv.AddressProto;
-import cz.ctu.fee.dsv.CommandsGrpc;
-import cz.ctu.fee.dsv.DSNeighboursProto;
+import cz.ctu.fee.dsv.*;
 import cz.ctu.fee.dsv.grpc.base.NodeCommands;
 import cz.ctu.fee.dsv.grpc.base.NodeCommandsImpl;
+import cz.ctu.fee.dsv.grpc.mappers.ProtobufMapper;
 import io.grpc.stub.StreamObserver;
 
 public class MessageReceiver extends CommandsGrpc.CommandsImplBase {
@@ -97,4 +96,33 @@ public class MessageReceiver extends CommandsGrpc.CommandsImplBase {
         // Signal that the call is complete
         responseObserver.onCompleted();
     }
+
+    @Override
+    public void preliminaryRequest(RequestResourceMessageProto requestMessageProto, StreamObserver<Empty> responseObserver) {
+        nodeCommands.preliminaryRequest(requestMessageProto);
+        responseObserver.onNext(Empty.getDefaultInstance());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void requestResource(RequestResourceMessageProto requestMessageProto, StreamObserver<Empty> responseObserver) {
+        nodeCommands.requestResource(requestMessageProto);
+        responseObserver.onNext(Empty.getDefaultInstance());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void resourceWasReleased(ResourceProto resourceProto, StreamObserver<Empty> responseObserver) {
+        nodeCommands.resourceWasReleased(resourceProto);
+        responseObserver.onNext(Empty.getDefaultInstance());
+        responseObserver.onCompleted();
+    }
+
+    @Override
+    public void acquireResource(AcquireMessageProto acquireMessageProto, StreamObserver<Empty> responseObserver) {
+        nodeCommands.acquireResource(acquireMessageProto);
+        responseObserver.onNext(Empty.getDefaultInstance());
+        responseObserver.onCompleted();
+    }
+
 }

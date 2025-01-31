@@ -1,16 +1,23 @@
 package cz.ctu.fee.dsv.grpc;
 
 import com.google.protobuf.Empty;
-import cz.ctu.fee.dsv.CommandsGrpc;
+import cz.ctu.fee.dsv.*;
 import cz.ctu.fee.dsv.grpc.base.Address;
 import cz.ctu.fee.dsv.grpc.base.DSNeighbours;
 import cz.ctu.fee.dsv.grpc.exceptions.KilledNodeActsAsClientException;
 import cz.ctu.fee.dsv.grpc.mappers.ProtobufMapper;
+import cz.ctu.fee.dsv.grpc.resources.Resource;
 import io.grpc.Server;
 import io.grpc.ServerBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class Node implements Runnable {
     // Using logger is strongly recommended (log4j, ...)
+    final Logger logger = LoggerFactory.getLogger(Node.class);
 
     // Name of our RMI "service"
     public static final String COMM_INTERFACE_NAME = "DSVNode";
@@ -39,6 +46,12 @@ public class Node implements Runnable {
     private int delay = 0;
 
     boolean repairInProgress = false;
+
+    private Resource resource;
+
+    private NodeStatus nodeStatus = NodeStatus.ACTIVE;
+
+    private HashMap<String, Resource> grantedResources = new HashMap<>();
 
     public Node (String[] args) {
         // handle commandline arguments
@@ -119,13 +132,41 @@ public class Node implements Runnable {
                 "nick:'"+nickname+"', " +
                 "myIP:'"+myIP+"', " +
                 "myPort:'"+myPort+"', " +
+                "resource:"+resource.getId()+", " +
+                "resourceIsFree:"+this.resource.isResourceFree()+", " +
+                "nodeStatus:" + this.nodeStatus.toString() +
                 "otherNodeIP:'"+otherNodeIP+"', " +
                 "otherNodePort:'"+otherNodePort+"']";
     }
 
 
     public String getStatus() {
-        return "Status: " + this + " with addres " + myAddress + "\n    with neighbours " + myNeighbours;
+        return "Status: " + this + " with addres " + myAddress + "\n    with neighbours " + myNeighbours
+                + "\n   with granted resources: " + grantedResourcesToString()
+                + "\n with delayed requests: " +  delayedRequestsToString();
+    }
+
+    private String delayedRequestsToString() {
+        StringBuilder stringBuilder = new StringBuilder();
+        for(RequestResourceMessageProto requestResourceMessageProto : this.resource.getDelayedRequestsList()){
+            stringBuilder
+                    .append("[Requester: ")
+                    .append(requestResourceMessageProto.getRequesterAddress())
+                    .append("; resourceId: " + requestResourceMessageProto.getResourceId())
+                    .append("], ");
+        }
+        return stringBuilder.toString();
+    }
+
+    private String grantedResourcesToString() {
+        StringBuilder result = new StringBuilder();
+        for (Map.Entry<String, Resource> entry : grantedResources.entrySet()) {
+            String key = entry.getKey();
+            Resource value = entry.getValue();
+            result.append(value.toString());
+            result.append(", ");
+        }
+        return result.toString();
     }
 
 
@@ -140,6 +181,7 @@ public class Node implements Runnable {
         System.setProperty("java.rmi.server.useLocalHostname", "true");
 
         nodeId = generateId(myIP, myPort);
+        resource = new Resource(getProcessId(myIP, myPort)+"_R", "data " + myPort);
         myAddress = new Address(myIP, myPort);
         myNeighbours = new DSNeighbours(myAddress);
         printStatus();
@@ -169,7 +211,7 @@ public class Node implements Runnable {
             e.printStackTrace();
             // TODO Exception -> exit
         }
-        System.out.println("Neighbours after JOIN " + myNeighbours);
+        logger.info("Neighbours after JOIN " + myNeighbours);
     }
 
     public void stopGrpc() {
@@ -181,6 +223,7 @@ public class Node implements Runnable {
     }
 
     public void repairTopology(Address missingNode) {
+        logger.info("Repairing topology. Missing node " + missingNode);
         if (repairInProgress == false) {
             repairInProgress = true;
             {
@@ -190,7 +233,7 @@ public class Node implements Runnable {
                     // this should not happen
                     e.printStackTrace();
                 }
-                System.out.println("Topology was repaired " + myNeighbours );
+                logger.info("Topology was repaired " + myNeighbours );
             }
             repairInProgress = false;
 
@@ -198,7 +241,7 @@ public class Node implements Runnable {
     }
 
     public void sendHelloToNext() throws KilledNodeActsAsClientException {
-        System.out.println("Sending Hello to my Next ...");
+        logger.info("Sending Hello to my Next ...");
         if (!myCommHub.isAlive()) throw new KilledNodeActsAsClientException("Node is not alive. Try to revive it.");
         try {
             myCommHub.getNext().hello(Empty.getDefaultInstance());
@@ -209,7 +252,7 @@ public class Node implements Runnable {
 
     public void resetoNodeInTopology() {
         // reset info - start as I am only node
-        System.out.println("Reseting node in topology");
+        logger.info("Reseting node " + this.getAddress() + " in topology");
         myNeighbours = new DSNeighbours(myAddress);
     }
 
@@ -237,12 +280,86 @@ public class Node implements Runnable {
             Address nodeToJoinWith = myNeighbours.prev;
             join(nodeToJoinWith.hostname, nodeToJoinWith.port);
         } catch (KilledNodeActsAsClientException e){ /* Will never happen */
-            System.out.println("Failed to revive node: " + e.getMessage());
+            logger.info("Failed to revive node: " + e.getMessage());
         }
         catch (Exception e){
-            System.out.println("Failed to revive node: " + e.getMessage());
+            logger.error("Failed to revive node: " + e.getMessage());
             throw e;
         }
+    }
+
+    public void sendPreliminaryRequest(String resourceId) {
+        this.myCommHub.getGrpcProxy(this.myAddress)
+                .preliminaryRequest(RequestResourceMessageProto.newBuilder()
+                        .setResourceId(resourceId)
+                        .setRequesterAddress(ProtobufMapper.AddressToProto(this.myAddress))
+                        .build());
+    }
+
+    public void processPreliminaryRequest(RequestResourceMessageProto preliminaryRequestMessageProto) {
+        resource.processPreliminaryRequest(preliminaryRequestMessageProto);
+    }
+
+    public void requestResource(RequestResourceMessageProto requestResourceMessageProto) {
+        if(this.resource.processRequest(requestResourceMessageProto)){
+            AcquireMessageProto messageWithGrant = AcquireMessageProto.newBuilder()
+                    .setResource(ProtobufMapper.resourceToProto(this.resource))
+                    .setRequesterAddress(requestResourceMessageProto.getRequesterAddress())
+                    .build();
+            /* sending message with the granted resource to the requester */
+            this.myCommHub.getNext().acquireResource(messageWithGrant);
+        } else {
+            logger.info("Resource was not granted on request from {}", requestResourceMessageProto.getRequesterAddress());
+        }
+    }
+
+
+    public void requestResource(String resourceId) {
+        this.setStatus(NodeStatus.PASSIVE);
+        this.getCommHub().getGrpcProxy(this.myAddress).requestResource(RequestResourceMessageProto
+                .newBuilder()
+                .setResourceId(resourceId)
+                .setRequesterAddress(ProtobufMapper.AddressToProto(this.myAddress))
+                .build());
+    }
+
+    public void releaseResource(String resourceId) {
+        Resource resourceForRelease =  this.grantedResources.get(resourceId);
+        this.grantedResources.remove(resourceId);
+        this.myCommHub.getNext()
+                .resourceWasReleased(ResourceProto.newBuilder()
+                        .setId(resourceForRelease.getId())
+                        .setData(resourceForRelease.getData())
+                        .build());
+    }
+
+    public void processReleaseResource(ResourceProto resourceProto){
+        logger.info("Resource was released request on {} by {}", this.getAddress(), this.resource.getLastPreliminaryRequesterId());
+
+        RequestResourceMessageProto delayedRequest = this.resource.processReleasedResource(resourceProto);
+        if (delayedRequest != null) {
+            resource.processRequest(delayedRequest);
+        }
+    }
+
+    public void acquireResource(AcquireMessageProto acquireMessageProto){
+        logger.info(this.getAddress()+" acquired resource " + acquireMessageProto.getResource().getId());
+        this.getGrantedResources().put(
+                acquireMessageProto.getResource().getId(),
+                new Resource(
+                        acquireMessageProto.getResource().getId(),
+                        acquireMessageProto.getResource().getData())
+        );
+        this.setStatus(NodeStatus.ACTIVE);
+    }
+
+
+    public HashMap<String, Resource> getGrantedResources() {
+        return grantedResources;
+    }
+
+    public Resource getResource() {
+        return resource;
     }
 
     public Address getAddress() {
@@ -292,6 +409,10 @@ public class Node implements Runnable {
 
     public void setMyIP(String myIP) {
         this.myIP = myIP;
+    }
+
+    public void setStatus(NodeStatus nodeStatus) {
+        this.nodeStatus = nodeStatus;
     }
 
     public static void main(String[] args) {
